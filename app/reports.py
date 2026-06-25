@@ -20,13 +20,24 @@ from . import budget_engine, charts, telegram_bot
 from .config import DATA_DIR, settings
 from .db import db_cursor
 
+# Captions carry emoji; the Windows console codepage (cp1252) can't encode them,
+# so make stdout/stderr tolerant rather than crashing AFTER a chart was sent.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 _LOG = DATA_DIR / "reports.log"
 
 
 def _log(msg: str) -> None:
     """Print and append to data/reports.log, so scheduled runs leave a trail."""
     line = f"{datetime.now():%Y-%m-%d %H:%M:%S} [reports] {msg}"
-    print(line)
+    try:
+        print(line)
+    except Exception:
+        pass
     try:
         with open(_LOG, "a", encoding="utf-8") as f:
             f.write(line + "\n")
