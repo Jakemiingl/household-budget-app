@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Household Budget</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">💰 <span>Household</span></div>
+    <nav>
+      <button class="nav-item active" data-view="dashboard">Dashboard</button>
+      <button class="nav-item" data-view="accounts">Accounts</button>
+      <button class="nav-item" data-view="budgets">Budgets</button>
+      <button class="nav-item" data-view="goals">Goals</button>
+      <button class="nav-item" data-view="recurring">Recurring</button>
+      <button class="nav-item" data-view="transactions">Transactions</button>
+      <button class="nav-item" data-view="rules">Rules</button>
+      <button class="nav-item" data-view="assistant">Assistant</button>
+      <button class="nav-item" data-view="setup">Setup</button>
+    </nav>
+    <div class="status" id="status"></div>
+  </aside>
+
+  <main class="content">
+    <!-- DASHBOARD -->
+    <section class="view active" id="view-dashboard">
+      <h1>Dashboard</h1>
+      <div id="dash-reminder"></div>
+      <div class="cards" id="networth-cards"></div>
+      <div class="panel">
+        <h2>This Month</h2>
+        <div class="cards" id="month-cards"></div>
+        <div id="month-categories"></div>
+      </div>
+      <div class="panel">
+        <h2>Cash Flow (6 months)</h2>
+        <div id="cashflow-chart"></div>
+      </div>
+      <div class="panel">
+        <h2>Accounts</h2>
+        <div id="accounts-list"></div>
+      </div>
+    </section>
+
+    <!-- ACCOUNTS -->
+    <section class="view" id="view-accounts">
+      <h1>Accounts</h1>
+      <p class="muted">Plaid-synced accounts update automatically. Add accounts that aren't on Plaid below, and update their balances on a regular basis to keep net worth accurate.</p>
+      <div id="accounts-reminder"></div>
+      <div class="cards" id="accounts-networth"></div>
+      <div class="panel">
+        <h2>All accounts</h2>
+        <p class="muted">Enter the APR <em>and</em> your typical monthly payment on credit cards & loans (works for Plaid accounts too — sync won't overwrite them). The payment is what lets us model real principal paydown for an accurate payoff date and true interest.</p>
+        <div id="accounts-manage"></div>
+      </div>
+      <div class="panel">
+        <h2>Debt payoff plan</h2>
+        <p class="muted">Avalanche method — putting extra money toward the highest-APR debt first clears your debt for the least total interest. With a monthly payment set, payoff dates and interest are amortized (interest shrinks as the balance falls), not a flat balance × rate.</p>
+        <div id="debt-plan"></div>
+      </div>
+      <div class="panel">
+        <h2>Add a manual account</h2>
+        <form id="manual-account-form" class="form-row">
+          <input name="name" placeholder="Account name (e.g. Local CU Savings)" required />
+          <select name="kind">
+            <optgroup label="Assets">
+              <option value="depository|checking">Checking</option>
+              <option value="depository|savings">Savings</option>
+              <option value="depository|cash">Cash</option>
+              <option value="investment|brokerage">Investment / Brokerage</option>
+              <option value="investment|retirement">Retirement (401k/IRA)</option>
+              <option value="depository|other">Other asset</option>
+            </optgroup>
+            <optgroup label="Liabilities">
+              <option value="credit|credit card">Credit card</option>
+              <option value="loan|loan">Loan</option>
+              <option value="loan|mortgage">Mortgage</option>
+            </optgroup>
+          </select>
+          <input name="current_balance" type="number" step="0.01" placeholder="Current balance $" required />
+          <button type="submit">Add account</button>
+        </form>
+        <p class="muted" style="margin-top:8px">For liabilities (credit card, loan, mortgage), enter the amount owed as a positive number.</p>
+      </div>
+      <div class="panel">
+        <h2>Add a physical asset</h2>
+        <p class="muted">Track things you own (vehicle, RV, property). Their value counts toward your net worth. Optionally link the loan that financed it to see your equity — and remember to refresh the value now and then so it stays accurate.</p>
+        <form id="asset-form" class="form-row">
+          <input name="name" placeholder="Asset name (e.g. 2022 Travel Trailer)" required />
+          <select name="subtype">
+            <option value="vehicle">Vehicle</option>
+            <option value="rv">RV / Camper</option>
+            <option value="real_estate">Real estate</option>
+            <option value="other">Other asset</option>
+          </select>
+          <input name="current_balance" type="number" step="0.01" placeholder="Estimated value $" required />
+          <select name="linked_account_id" id="asset-loan-select">
+            <option value="">Not financed / no loan</option>
+          </select>
+          <button type="submit">Add asset</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- BUDGETS -->
+    <section class="view" id="view-budgets">
+      <h1>Budgets</h1>
+      <p class="muted">Set a monthly limit per category. Spending is pulled from this month's transactions.</p>
+      <div id="budgets-surplus" style="display:inline-block;min-width:200px;margin-bottom:14px"></div>
+      <button id="ai-budget-btn" style="margin-bottom:14px">✨ Build my budget with AI</button>
+      <div id="budgets-table"></div>
+    </section>
+
+    <!-- GOALS -->
+    <section class="view" id="view-goals">
+      <h1>Goals</h1>
+      <p class="muted">Projected from your average monthly surplus, funded in priority order.</p>
+      <button id="ai-goal-btn" style="margin-bottom:14px">✨ Plan a goal with AI</button>
+      <div class="surplus-banner" id="surplus-banner"></div>
+      <div id="goals-list"></div>
+      <div class="panel">
+        <h2>Add a goal</h2>
+        <form id="goal-form" class="form-row">
+          <input name="name" placeholder="e.g. House Down Payment" required />
+          <input name="target_amount" type="number" step="0.01" placeholder="Target $ (auto for pay-off)" />
+          <input name="current_amount" type="number" step="0.01" placeholder="Saved so far $" value="0" />
+          <input name="target_date" type="date" />
+          <input name="priority" type="number" placeholder="Priority (1=first)" value="100" />
+          <button type="submit">Add</button>
+        </form>
+        <p class="muted" style="margin:10px 0 4px">Track against accounts (optional): progress updates automatically from their balances. Bind a credit/loan account and it becomes a <b>pay-off</b> goal — done when the balance hits $0. "Saved so far"/"Target" above are ignored for accounts you bind.</p>
+        <div id="goal-accounts" class="acct-picklist"></div>
+      </div>
+    </section>
+
+    <!-- RECURRING -->
+    <section class="view" id="view-recurring">
+      <h1>Recurring &amp; Subscriptions</h1>
+      <p class="muted">Detected automatically from your transaction history — regular charges and their monthly cost.</p>
+      <div class="cards" id="recurring-cards"></div>
+      <div class="panel">
+        <h2>Detected recurring charges</h2>
+        <div id="recurring-table"></div>
+      </div>
+      <div class="panel" id="dismissed-panel" style="display:none">
+        <h2>Dismissed</h2>
+        <p class="muted">Hidden from totals. If one of these is charged again, it'll reappear above automatically.</p>
+        <div id="dismissed-table"></div>
+      </div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section class="view" id="view-transactions">
+      <h1>Transactions</h1>
+      <div class="toolbar">
+        <input type="search" id="txn-search" placeholder="Search last 6 months…" />
+        <input type="month" id="txn-month" />
+        <button id="recategorize-btn" class="secondary">Re-run categorization</button>
+      </div>
+      <div id="transactions-table"></div>
+      <div id="txn-pager" class="toolbar" style="margin-top:14px"></div>
+    </section>
+
+    <!-- RULES -->
+    <section class="view" id="view-rules">
+      <h1>Rules &amp; Categorization</h1>
+      <p class="muted">Tag what's uncategorized. Turning a transaction into a rule re-categorizes every matching transaction — past <em>and</em> future.</p>
+      <div class="panel">
+        <h2>Uncategorized <span id="uncat-count" class="chip"></span></h2>
+        <div class="toolbar">
+          <button id="suggest-cats-btn">✨ Suggest categories with AI</button>
+          <span id="suggest-status" class="muted"></span>
+        </div>
+        <div id="uncategorized-table"></div>
+      </div>
+      <div class="panel">
+        <h2>Possible rule mismatches <span id="mismatch-count" class="chip"></span></h2>
+        <p class="muted">Transactions a rule filed under a category whose <em>kind</em> disagrees with Plaid's own category — e.g. a rule called it spending but Plaid says it's a transfer. Review and fix the ones that are wrong.</p>
+        <div id="mismatch-table"></div>
+      </div>
+      <div class="panel">
+        <h2>Add a rule</h2>
+        <p class="muted">Create a keyword rule directly — no uncategorized transaction needed. "Applies to" lets the same keyword route by direction (e.g. <em>mercury</em> → Debt Payment when money out, Income when money in).</p>
+        <div class="toolbar">
+          <input id="newrule-pattern" placeholder="keyword (e.g. mercury)" style="width:170px" />
+          <select id="newrule-dir"></select>
+          <select id="newrule-cat"></select>
+          <button id="newrule-add">Add rule</button>
+          <span id="newrule-status" class="muted"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Add a category</h2>
+        <p class="muted">Create a new category to file transactions under (e.g. <em>Business Expense</em>). Kind drives the math: income counts as money in, expense as spending, transfer is excluded from both.</p>
+        <div class="toolbar">
+          <input id="newcat-name" placeholder="category name" style="width:170px" />
+          <select id="newcat-kind">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+            <option value="transfer">Transfer</option>
+          </select>
+          <button id="newcat-add">Add category</button>
+          <span id="newcat-status" class="muted"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Active rules</h2>
+        <div id="rules-table"></div>
+      </div>
+    </section>
+
+    <!-- ASSISTANT -->
+    <section class="view" id="view-assistant">
+      <h1>Assistant</h1>
+      <p class="muted">Ask things like “Can we afford a $4,000 vacation?” or “How are we doing on dining this month?”</p>
+      <div class="chat" id="chat-log"></div>
+      <form id="chat-form" class="chat-input">
+        <input id="chat-question" placeholder="Ask about a purchase or your budget…" autocomplete="off" />
+        <button type="submit">Ask</button>
+      </form>
+    </section>
+
+    <!-- SETUP -->
+    <section class="view" id="view-setup">
+      <h1>Setup</h1>
+      <div class="panel">
+        <h2>Try it now (no bank needed)</h2>
+        <p class="muted">Load a realistic sample household to explore every feature.</p>
+        <button id="load-sample-btn">Load sample data</button>
+        <button id="reset-btn" class="danger">Reset all data</button>
+      </div>
+      <div class="panel">
+        <h2>Connect a bank (Plaid)</h2>
+        <p class="muted">Add your Plaid keys to <code>.env</code> first (see the steps below). Then connect your real bank, or — in Sandbox — connect a fake test bank instantly.</p>
+        <button id="link-connect-btn">Connect your bank</button>
+        <button id="sandbox-connect-btn" class="secondary">Connect Sandbox test bank</button>
+        <button id="sync-btn" class="secondary">Sync transactions</button>
+        <div id="setup-result" class="muted"></div>
+      </div>
+      <div class="panel">
+        <h2>Chat from your phone (Telegram) <span id="tg-status" class="chip"></span></h2>
+        <ol class="muted" style="line-height:1.7">
+          <li>In Telegram, message <code>@BotFather</code>, send <code>/newbot</code>, follow the prompts, and copy the <b>bot token</b>.</li>
+          <li>Put it in <code>.env</code> as <code>TELEGRAM_BOT_TOKEN=</code> and restart the app.</li>
+          <li>Open your new bot in Telegram and send it any message — it replies with your <b>chat ID</b>.</li>
+          <li>Add that ID (and your spouse's) to <code>TELEGRAM_ALLOWED_CHAT_IDS=</code> (comma-separated) in <code>.env</code> and restart.</li>
+          <li>Now you can both ask things like <em>"Can we afford a $2,000 couch?"</em> from your phones — even while out shopping (the app must be running on this PC).</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h2>Getting Plaid keys</h2>
+        <ol class="muted" style="line-height:1.7">
+          <li>Sign up free at <code>dashboard.plaid.com</code>.</li>
+          <li>Open <b>Developers → Keys</b>; copy your <code>client_id</code> and the <b>Sandbox</b> secret.</li>
+          <li>Copy <code>.env.example</code> to <code>.env</code>, paste them in, keep <code>PLAID_ENV=sandbox</code>, and restart the app.</li>
+          <li>Click <b>Connect your bank</b> and use Plaid's test login <code>user_good</code> / <code>pass_good</code> to verify the flow.</li>
+          <li>For real accounts: request <b>Production</b> access in the dashboard, swap in the Production secret, and set <code>PLAID_ENV=production</code>.</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

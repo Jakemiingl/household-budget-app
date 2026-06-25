@@ -1,0 +1,16 @@
+# Secrets — never commit
+.env
+
+# Local data — the SQLite DB, logs, and any runtime artifacts.
+# Ignore everything under data/ but keep the (empty) directory itself.
+data/*
+!data/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+.DS_Store
