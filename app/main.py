@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import budget_engine, telegram_bot
+from . import budget_engine, goal_engine, telegram_bot
 from .config import WEB_DIR, settings
 from .db import db_cursor, init_db
 from .routers import (
@@ -23,8 +23,9 @@ from .routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    with db_cursor() as conn:        # capture a net-worth point each launch
+    with db_cursor() as conn:        # capture net-worth + goal points each launch
         budget_engine.record_snapshot(conn)
+        goal_engine.record_goal_snapshots(conn)
     bot_task = None
     if settings.telegram_bot_token:
         bot_task = asyncio.create_task(telegram_bot.run_bot())

@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime
 
-from . import budget_engine, charts, telegram_bot
+from . import budget_engine, charts, goal_engine, telegram_bot
 from .config import DATA_DIR, settings
 from .db import db_cursor
 
@@ -58,9 +58,10 @@ def _send(png: bytes, caption: str) -> None:
 def run(kind: str) -> int:
     today = date.today()
     with db_cursor() as conn:
-        budget_engine.record_snapshot(conn)  # always capture a point
+        budget_engine.record_snapshot(conn)        # always capture points
+        goal_engine.record_goal_snapshots(conn)
         if kind == "snapshot":
-            _log("net-worth snapshot recorded.")
+            _log("net-worth + goal snapshots recorded.")
         elif kind == "goals":
             _send(charts.goals_chart(conn),
                   f"🎯 Goal progress — {today:%b %d, %Y}")

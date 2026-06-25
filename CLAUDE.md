@@ -132,6 +132,10 @@ data/               budget.db, server.log, _*.json — all git-ignored
   per day for the net-worth-over-time chart (the app stores only current balances, so
   history is built forward). Written by `budget_engine.record_snapshot()` on app
   start, on the networth chart view, and on every `app.reports` run.
+- `goal_snapshots` (snapshot_date, goal_id PK'd together, name, current_amount,
+  target_amount) — one row per goal per day for the goal-progress line chart. Written by
+  `goal_engine.record_goal_snapshots()` (uses project()'s derived progress) alongside the
+  net-worth snapshot. `goal_engine.goal_history()` returns per-goal % series.
 
 ## Features (all built & tested)
 - **Accounts tab** — Plaid accounts (read-only, "Plaid" chip) + **manual accounts**
@@ -185,10 +189,13 @@ data/               budget.db, server.log, _*.json — all git-ignored
 - **Assistant** — in-app chat + Telegram. Answers affordability/budget questions
   AND returns one-click-apply `proposed_budgets` / `proposed_goals`. Money math is
   always computed in Python (assistant.build_context); the LLM only narrates.
-- **Charts** (tab) — three server-rendered PNG charts (matplotlib): **goal progress**
-  (bar per goal), **net worth over time** (line from daily snapshots), **monthly cash
-  flow** (income/expense bars + net line). Web embeds `/api/charts/{goals,networth,
-  cashflow}.png` (cache-busted). Same renderer feeds the Telegram reports.
+- **Charts** (tab) — three server-rendered PNG charts (matplotlib): **goal progress
+  over time** (a climbing line per goal = % toward target, from daily `goal_snapshots`;
+  payoff goals rise as debt drops, savings as they grow), **net worth over time** (line
+  from daily `net_worth_snapshots`), **monthly cash flow** (income/expense bars + net
+  line). Web embeds `/api/charts/{goals,networth,cashflow}.png` (cache-busted). Same
+  renderer feeds the Telegram reports. Line charts need ≥2 snapshot days to show
+  movement; they render dots + a "builds daily" note until then.
 - **Scheduled Telegram reports** — `app/reports.py` + `run_report.cmd`, driven by
   **Windows Task Scheduler** (works even when the app is shut down). Tasks: goals
   chart every **Monday** 8am; cash-flow (excl. current month) **1st Wednesday** 8am;

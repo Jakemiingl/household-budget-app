@@ -1,7 +1,7 @@
 """Chart images (PNG) for the web UI — the same renderer the Telegram reports use."""
 from fastapi import APIRouter, Response
 
-from .. import budget_engine, charts
+from .. import budget_engine, charts, goal_engine
 from ..db import db_cursor
 
 router = APIRouter()
@@ -16,6 +16,7 @@ def _png(data: bytes) -> Response:
 @router.get("/goals.png")
 def goals_png():
     with db_cursor() as conn:
+        goal_engine.record_goal_snapshots(conn)  # capture today's point when viewed
         return _png(charts.goals_chart(conn))
 
 

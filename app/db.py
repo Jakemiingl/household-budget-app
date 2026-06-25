@@ -107,6 +107,18 @@ CREATE TABLE IF NOT EXISTS net_worth_snapshots (
     created_at    TEXT DEFAULT (datetime('now'))
 );
 
+-- Daily goal-progress snapshots for the "progress over time" line chart. Progress
+-- (current_amount) is what goal_engine.project() derives: amount paid down for a
+-- payoff goal, amount saved for a savings goal. One row per (date, goal).
+CREATE TABLE IF NOT EXISTS goal_snapshots (
+    snapshot_date  TEXT NOT NULL,        -- YYYY-MM-DD
+    goal_id        INTEGER NOT NULL,
+    name           TEXT,                 -- stored so labels survive goal deletion
+    current_amount REAL NOT NULL,
+    target_amount  REAL NOT NULL,
+    PRIMARY KEY (snapshot_date, goal_id)
+);
+
 CREATE TABLE IF NOT EXISTS recurring_dismissed (
     merchant_key TEXT PRIMARY KEY,   -- normalized merchant key from recurring.py
     label        TEXT,               -- human-friendly name for display

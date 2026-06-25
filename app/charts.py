@@ -61,30 +61,46 @@ def _render(fig) -> bytes:
     return buf.getvalue()
 
 
+_LINE_COLORS = [_ACCENT, _GREEN, _AMBER, "#c77dff", "#ff8c42", "#4dd0e1"]
+
+
 def goals_chart(conn: sqlite3.Connection) -> bytes:
-    """Horizontal progress bars, one per goal (current vs target)."""
-    goals = goal_engine.project(conn)["goals"]
-    active = [g for g in goals if not g["complete"]] or goals
-    fig, ax = _fig(8.0, max(2.6, 0.8 * len(active) + 1.3))
-    if not active:
-        _empty(ax, "Goal progress", "No goals yet — add some on the Goals tab.")
+    """One line per goal: % toward target over time, climbing toward 100%.
+
+    Progress comes from goal_engine (debt paid down for a payoff goal, amount saved
+    for a savings goal), so every line moves UP as you make progress. History builds
+    from daily snapshots.
+    """
+    hist = goal_engine.goal_history(conn)
+    fig, ax = _fig(8.0, 4.5)
+    if not hist:
+        _empty(ax, "Goal progress over time",
+               "No goal history yet — a point is recorded each day.\n"
+               "Lines will climb here as you pay down debt / save toward goals.")
         return _render(fig)
-    pct = [min(100.0, (g["current_amount"] / g["target_amount"] * 100.0)
-                if g["target_amount"] > 0 else 0.0) for g in active]
-    labels = [f"{g['name']}\n${g['current_amount']:,.0f} of ${g['target_amount']:,.0f}"
-              for g in active]
-    y = list(range(len(active)))
-    ax.barh(y, [100] * len(active), color=_BG, edgecolor=_MUTED, height=0.55)
-    ax.barh(y, pct, color=_ACCENT, height=0.55)
-    for i, p in enumerate(pct):
-        ax.text(min(98, p + 1.5), i, f"{p:.0f}%", va="center", ha="left",
-                color=_TEXT, fontsize=9, clip_on=False)
-    ax.set_yticks(y)
-    ax.set_yticklabels(labels, color=_TEXT, fontsize=8)
-    ax.invert_yaxis()
-    ax.set_xlim(0, 100)
-    ax.set_xlabel("% to target", color=_MUTED)
-    ax.set_title("Goal progress")
+
+    all_dates = sorted({p["date"] for g in hist for p in g["points"]})
+    idx = {d: i for i, d in enumerate(all_dates)}
+    for n, g in enumerate(hist):
+        xs = [idx[p["date"]] for p in g["points"]]
+        ys = [p["pct"] for p in g["points"]]
+        color = _LINE_COLORS[n % len(_LINE_COLORS)]
+        # A lone snapshot can't draw a line — show a clear dot so it's still visible.
+        ax.plot(xs, ys, marker="o", linewidth=2.2,
+                markersize=(7 if len(xs) == 1 else 4), color=color, label=g["name"])
+    ax.axhline(100, color=_MUTED, linestyle="--", linewidth=0.9)  # the goal line
+    ax.text(0, 101.5, "goal", color=_MUTED, fontsize=8)
+    ax.set_ylim(0, 108)
+    step = max(1, len(all_dates) // 8)
+    ax.set_xticks(list(range(len(all_dates)))[::step])
+    ax.set_xticklabels(all_dates[::step], rotation=45, ha="right", fontsize=7)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _=None: f"{v:.0f}%"))
+    ax.set_ylabel("progress to goal", color=_MUTED)
+    title = "Goal progress over time"
+    if len(all_dates) < 2:
+        title += "  (history builds daily)"
+    ax.set_title(title)
+    _legend(ax)
     return _render(fig)
 
 

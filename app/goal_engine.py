@@ -211,6 +211,44 @@ def project(conn: sqlite3.Connection, surplus: float | None = None,
     }
 
 
+def record_goal_snapshots(conn: sqlite3.Connection) -> None:
+    """Snapshot today's progress for every goal (one row per goal per day).
+
+    Idempotent — re-running on the same day updates the row. Builds the history the
+    "progress over time" line chart plots.
+    """
+    for g in project(conn)["goals"]:
+        conn.execute(
+            """INSERT INTO goal_snapshots
+                   (snapshot_date, goal_id, name, current_amount, target_amount)
+               VALUES (date('now'), ?, ?, ?, ?)
+               ON CONFLICT(snapshot_date, goal_id) DO UPDATE SET
+                   name=excluded.name, current_amount=excluded.current_amount,
+                   target_amount=excluded.target_amount""",
+            (g["id"], g["name"], g["current_amount"], g["target_amount"]),
+        )
+
+
+def goal_history(conn: sqlite3.Connection) -> list[dict]:
+    """Per-goal progress series for the line chart: % toward target over time."""
+    rows = conn.execute(
+        """SELECT snapshot_date, goal_id, name, current_amount, target_amount
+           FROM goal_snapshots ORDER BY goal_id, snapshot_date"""
+    ).fetchall()
+    by_goal: dict[int, dict] = {}
+    for r in rows:
+        g = by_goal.setdefault(r["goal_id"], {"goal_id": r["goal_id"],
+                                              "name": r["name"], "points": []})
+        g["name"] = r["name"]  # keep the latest label
+        pct = (r["current_amount"] / r["target_amount"] * 100.0
+               if r["target_amount"] > 0 else 0.0)
+        g["points"].append({"date": r["snapshot_date"],
+                            "pct": max(0.0, min(100.0, pct)),
+                            "current": r["current_amount"],
+                            "target": r["target_amount"]})
+    return list(by_goal.values())
+
+
 def simulate_purchase(conn: sqlite3.Connection, amount: float) -> dict:
     """Compare goal timelines with vs. without a one-time purchase of `amount`.
 
