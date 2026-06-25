@@ -103,6 +103,9 @@ input, select {
 .chip.warn { color: var(--amber); }
 .warn { color: var(--amber); }
 
+/* Server-rendered chart images on the Charts tab. */
+.chart-img { max-width: 100%; height: auto; display: block; border-radius: 6px; }
+
 /* Nudge banner for stale manual balances / asset values. */
 .reminder {
   background: var(--panel-2);

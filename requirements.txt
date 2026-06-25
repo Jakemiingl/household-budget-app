@@ -5,3 +5,4 @@ httpx
 plaid-python
 pydantic
 pydantic-settings
+matplotlib

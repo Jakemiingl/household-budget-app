@@ -11,6 +11,7 @@
     <div class="brand">💰 <span>Household</span></div>
     <nav>
       <button class="nav-item active" data-view="dashboard">Dashboard</button>
+      <button class="nav-item" data-view="charts">Charts</button>
       <button class="nav-item" data-view="accounts">Accounts</button>
       <button class="nav-item" data-view="budgets">Budgets</button>
       <button class="nav-item" data-view="goals">Goals</button>
@@ -41,6 +42,24 @@
       <div class="panel">
         <h2>Accounts</h2>
         <div id="accounts-list"></div>
+      </div>
+    </section>
+
+    <!-- CHARTS -->
+    <section class="view" id="view-charts">
+      <h1>Charts</h1>
+      <p class="muted">Visual trends. Net worth builds up over time as a snapshot is recorded each day the app runs; cash flow and goal progress come straight from your data.</p>
+      <div class="panel">
+        <h2>Goal progress</h2>
+        <img id="chart-goals" class="chart-img" alt="Goal progress chart" />
+      </div>
+      <div class="panel">
+        <h2>Net worth over time</h2>
+        <img id="chart-networth" class="chart-img" alt="Net worth over time chart" />
+      </div>
+      <div class="panel">
+        <h2>Monthly cash flow</h2>
+        <img id="chart-cashflow" class="chart-img" alt="Monthly cash flow chart" />
       </div>
     </section>
 

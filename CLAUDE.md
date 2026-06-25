@@ -65,6 +65,14 @@ app/
                    amortization _payoff_months() → realistic date + interest-to-clear),
                    simulate_purchase, bound_state() (payoff/savings derive; blends APR)
   recurring.py     detect() recurring/subscription charges (cadence + amount analysis)
+  charts.py        matplotlib (Agg) → PNG bytes: goals_chart, networth_chart,
+                   cashflow_chart. Shared by the web /api/charts/*.png AND the
+                   scheduled Telegram reports (one renderer). text.parse_math off so
+                   "$" renders literally. Fully local (no external chart service).
+  reports.py       Standalone scheduled-report sender (python -m app.reports
+                   {goals|cashflow|networth|snapshot|all}); run by Windows Task
+                   Scheduler, does NOT need the server up. Records a NW snapshot +
+                   sends a chart to all allowed Telegram chats. Logs to data/reports.log.
   llm_client.py    Claude CLI shell-out: _call(), complete() (chat), suggest_categories()
   assistant.py     SHARED pipeline: build_context() + respond(); used by web chat AND telegram
   telegram_bot.py  Long-poll bot (run_bot), format_reply(); allowlist security
@@ -120,6 +128,10 @@ data/               budget.db, server.log, _*.json — all git-ignored
   + **`goal_accounts`** (goal_id, account_id, start_balance) — accounts a goal tracks;
   progress derived from live balances vs. the start snapshot (see goal_engine).
 - `recurring_dismissed` (merchant_key, dismissed_at) — see Recurring below.
+- `net_worth_snapshots` (snapshot_date PK, assets, liabilities, net_worth) — one row
+  per day for the net-worth-over-time chart (the app stores only current balances, so
+  history is built forward). Written by `budget_engine.record_snapshot()` on app
+  start, on the networth chart view, and on every `app.reports` run.
 
 ## Features (all built & tested)
 - **Accounts tab** — Plaid accounts (read-only, "Plaid" chip) + **manual accounts**
@@ -173,6 +185,17 @@ data/               budget.db, server.log, _*.json — all git-ignored
 - **Assistant** — in-app chat + Telegram. Answers affordability/budget questions
   AND returns one-click-apply `proposed_budgets` / `proposed_goals`. Money math is
   always computed in Python (assistant.build_context); the LLM only narrates.
+- **Charts** (tab) — three server-rendered PNG charts (matplotlib): **goal progress**
+  (bar per goal), **net worth over time** (line from daily snapshots), **monthly cash
+  flow** (income/expense bars + net line). Web embeds `/api/charts/{goals,networth,
+  cashflow}.png` (cache-busted). Same renderer feeds the Telegram reports.
+- **Scheduled Telegram reports** — `app/reports.py` + `run_report.cmd`, driven by
+  **Windows Task Scheduler** (works even when the app is shut down). Tasks: goals
+  chart every **Monday** 8am; cash-flow (excl. current month) **1st Wednesday** 8am;
+  net-worth **last Friday** 8am; plus a **daily** 7am net-worth snapshot so the line
+  accrues. Tasks named `BudgetBot-*`; re-register via the schtasks calls (Task To Run =
+  `"<dir>\run_report.cmd" <kind>`). Sends to all `TELEGRAM_ALLOWED_CHAT_IDS`. Tasks
+  run only while the user is logged on; PC asleep at the time = missed run.
 - **Setup** — load sample data / reset; Plaid connect (sandbox + Hosted Link);
   Telegram + Plaid setup instructions and status chips.
 

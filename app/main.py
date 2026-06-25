@@ -11,17 +11,20 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import telegram_bot
+from . import budget_engine, telegram_bot
 from .config import WEB_DIR, settings
-from .db import init_db
+from .db import db_cursor, init_db
 from .routers import (
-    accounts, budgets, chat, dev, goals, plaid, recurring, rules, transactions,
+    accounts, budgets, charts, chat, dev, goals, plaid, recurring, rules,
+    transactions,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    with db_cursor() as conn:        # capture a net-worth point each launch
+        budget_engine.record_snapshot(conn)
     bot_task = None
     if settings.telegram_bot_token:
         bot_task = asyncio.create_task(telegram_bot.run_bot())
@@ -38,6 +41,7 @@ app = FastAPI(title="Household Budget", lifespan=lifespan)
 
 app.include_router(plaid.router, prefix="/api/plaid", tags=["plaid"])
 app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(charts.router, prefix="/api/charts", tags=["charts"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(goals.router, prefix="/api/goals", tags=["goals"])

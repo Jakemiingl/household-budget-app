@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS budgets (
     monthly_limit REAL NOT NULL
 );
 
+-- Daily net-worth snapshots for the net-worth-over-time chart. The app stores
+-- only current balances, so we record a point each day (one row per date) to
+-- build history going forward. INSERT OR REPLACE keeps one row per day.
+CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+    snapshot_date TEXT PRIMARY KEY,    -- YYYY-MM-DD
+    assets        REAL NOT NULL,
+    liabilities   REAL NOT NULL,
+    net_worth     REAL NOT NULL,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS recurring_dismissed (
     merchant_key TEXT PRIMARY KEY,   -- normalized merchant key from recurring.py
     label        TEXT,               -- human-friendly name for display

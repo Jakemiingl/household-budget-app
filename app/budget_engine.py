@@ -235,6 +235,33 @@ def _amortize(balance: float, apr: float | None, payment: float | None) -> dict 
     }
 
 
+def record_snapshot(conn: sqlite3.Connection) -> dict:
+    """Record today's net worth as a snapshot (one row per day; updates if re-run).
+
+    Cheap and idempotent — safe to call on app start, on chart views, and from the
+    scheduled report jobs. Builds the net-worth-over-time history going forward.
+    """
+    nw = net_worth(conn)
+    conn.execute(
+        """INSERT INTO net_worth_snapshots(snapshot_date, assets, liabilities, net_worth)
+           VALUES (date('now'), ?, ?, ?)
+           ON CONFLICT(snapshot_date) DO UPDATE SET
+               assets=excluded.assets, liabilities=excluded.liabilities,
+               net_worth=excluded.net_worth, created_at=datetime('now')""",
+        (nw["assets"], nw["liabilities"], nw["net_worth"]),
+    )
+    return nw
+
+
+def net_worth_history(conn: sqlite3.Connection) -> list[dict]:
+    """All net-worth snapshots, oldest first, for the over-time chart."""
+    rows = conn.execute(
+        """SELECT snapshot_date, assets, liabilities, net_worth
+           FROM net_worth_snapshots ORDER BY snapshot_date"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def debt_payoff_plan(conn: sqlite3.Connection) -> dict:
     """Rank liabilities for payoff using the avalanche method (highest APR first).
 

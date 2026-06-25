@@ -49,6 +49,26 @@ async def _send(client: httpx.AsyncClient, token: str, chat_id: int, text: str):
         pass  # don't let a send failure kill the poll loop
 
 
+def send_photo_sync(token: str, chat_ids, png: bytes, caption: str = "") -> int:
+    """Send a PNG to each chat ID (blocking). Used by the scheduled report jobs,
+    which run standalone (no event loop). Returns the number sent successfully.
+    """
+    sent = 0
+    with httpx.Client(timeout=30) as client:
+        for cid in chat_ids:
+            try:
+                r = client.post(
+                    _API.format(token=token, method="sendPhoto"),
+                    data={"chat_id": str(cid), "caption": caption},
+                    files={"photo": ("chart.png", png, "image/png")},
+                )
+                if r.json().get("ok"):
+                    sent += 1
+            except Exception as e:
+                print(f"[telegram] sendPhoto to {cid} failed: {e!r}")
+    return sent
+
+
 async def _handle(client, token, allowed, msg):
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()

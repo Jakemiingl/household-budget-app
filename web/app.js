@@ -1207,8 +1207,17 @@ $("#sync-btn").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- boot
+// Charts are server-rendered PNGs; bust the cache so each visit re-renders fresh.
+function loadCharts() {
+  const t = Date.now();
+  $("#chart-goals").src = `/api/charts/goals.png?t=${t}`;
+  $("#chart-networth").src = `/api/charts/networth.png?t=${t}`;
+  $("#chart-cashflow").src = `/api/charts/cashflow.png?t=${t}`;
+}
+
 const VIEWS = {
   dashboard: loadDashboard,
+  charts: loadCharts,
   accounts: loadAccounts,
   budgets: loadBudgets,
   goals: loadGoals,
