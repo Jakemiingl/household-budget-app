@@ -94,7 +94,7 @@ async function loadDashboard() {
     ? `<table><thead><tr><th>Account</th><th>Type</th><th class="num">Balance</th></tr></thead><tbody>${acc.accounts
         .map(
           (a) =>
-            `<tr><td>${a.name || "—"} ••${a.mask || ""}</td><td>${a.subtype || a.type}</td><td class="num">${money(a.current_balance)}</td></tr>`
+            `<tr><td>${esc(a.display_name || a.name || "—")}${a.mask ? " ••" + a.mask : ""}</td><td>${a.subtype || a.type}</td><td class="num">${money(a.current_balance)}</td></tr>`
         )
         .join("")}</tbody></table>`
     : `<p class="muted">No accounts connected.</p>`;
@@ -104,13 +104,14 @@ const card = (label, value, cls = "") =>
 
 // ---------------------------------------------------------------- accounts
 const LIABILITY_TYPES = ["credit", "loan"];
+let accountsById = {}; // latest accounts keyed by id, for the edit popup
 
 // A banner nudging the user to refresh manual balances/asset values that have
 // gone stale (manual accounts don't auto-update the way Plaid ones do).
 function staleBanner(accounts) {
   const stale = accounts.filter((a) => a.is_stale);
   if (!stale.length) return "";
-  const names = stale.map((a) => esc(a.name)).join(", ");
+  const names = stale.map((a) => esc(a.display_name || a.name)).join(", ");
   const s = stale.length > 1;
   return `<div class="reminder">⚠ ${stale.length} account value${s ? "s" : ""} may be out of date
     (${names}). Update ${s ? "them" : "it"} on the Accounts tab to keep net worth accurate.</div>`;
@@ -133,55 +134,55 @@ async function loadAccounts() {
     loanSel.innerHTML =
       `<option value="">Not financed / no loan</option>` +
       loans
-        .map((a) => `<option value="${a.id}">${esc(a.name)}${a.mask ? " ••" + a.mask : ""}</option>`)
+        .map((a) => `<option value="${a.id}">${esc(a.display_name || a.name)}${a.mask ? " ••" + a.mask : ""}</option>`)
         .join("");
   }
 
+  // Keep the latest accounts so the edit popup can look one up by id.
+  accountsById = {};
+  d.accounts.forEach((a) => (accountsById[a.id] = a));
+
   $("#accounts-manage").innerHTML = d.accounts.length
     ? `<table><thead><tr><th>Account</th><th>Type</th><th>Source</th>
-         <th class="num">Balance</th><th class="num">APR · Payment/mo</th><th>Updated</th><th></th></tr></thead>
+         <th class="num">Balance</th><th>APR · Payment/mo</th><th>Updated</th><th></th></tr></thead>
        <tbody>${d.accounts
-         .map((a, i) => {
+         .map((a) => {
            const liab = LIABILITY_TYPES.includes(a.type);
+           const isAsset = a.type === "asset";
            const bal = liab ? `<span class="neg">${money(a.current_balance)}</span>` : money(a.current_balance);
-           // Terms cell: editable APR + monthly payment for credit/loan (Plaid or
-           // manual), blank otherwise. Payment drives the real payoff/interest math.
-           const aprCell = liab
-             ? `<input id="apr-${i}" type="number" step="0.01" min="0" value="${a.interest_rate ?? ""}" placeholder="APR" style="width:54px" />%
-                &nbsp; $<input id="pay-${i}" type="number" step="1" min="0" value="${a.monthly_payment ?? ""}" placeholder="pay" style="width:66px" />/mo
-                <button class="secondary" onclick="setTerms('${a.id}', ${i})">set</button>`
+           // Name: custom name (or bank name) on top; show the original underneath
+           // only when a custom name overrides it, so it's clear what it maps to.
+           const name = a.display_name || a.name || "—";
+           const nameCell =
+             `<strong>${esc(name)}</strong>${a.mask ? ` <span class="muted">••${a.mask}</span>` : ""}` +
+             (a.custom_name && a.name && a.custom_name !== a.name
+               ? `<div class="muted" style="font-size:12px">${esc(a.name)}</div>`
+               : "") +
+             (a.equity != null
+               ? `<div class="muted" style="font-size:12px">Equity ${money(a.equity)} · financed by ${esc(a.linked_name)}</div>`
+               : "");
+           const typeCell = isAsset
+             ? `${esc(a.subtype || "asset")} <span class="chip">asset</span>`
+             : `${esc(a.subtype || a.type)}${liab ? ' <span class="chip">owed</span>' : ""}`;
+           // Read-only terms summary; editing happens in the popup.
+           const termsCell = liab
+             ? `${a.interest_rate != null ? a.interest_rate + "%" : '<span class="muted">no APR</span>'}
+                · ${a.monthly_payment != null ? "$" + a.monthly_payment + "/mo" : '<span class="muted">no payment</span>'}`
              : `<span class="muted">—</span>`;
-           if (a.is_manual) {
-             const isAsset = a.type === "asset";
-             const equityLine =
-               a.equity != null
-                 ? `<div class="muted" style="font-size:12px">Equity ${money(a.equity)} · financed by ${esc(a.linked_name)}</div>`
-                 : "";
-             const typeCell = isAsset
-               ? `${esc(a.subtype || "asset")} <span class="chip">asset</span>`
-               : `${esc(a.subtype || a.type)}${liab ? ' <span class="chip">owed</span>' : ""}`;
-             const updatedCell =
-               `${(a.updated_at || "").slice(0, 10)}` +
-               (a.is_stale ? ` <span class="chip warn">stale ${a.stale_days}d</span>` : "");
-             return `<tr>
-               <td>${esc(a.name || "—")}${equityLine}</td>
-               <td>${typeCell}</td>
-               <td><span class="chip">manual</span></td>
-               <td class="num"><input id="bal-${i}" type="number" step="0.01" value="${a.current_balance}" style="width:110px" /></td>
-               <td class="num">${aprCell}</td>
-               <td class="muted">${updatedCell}</td>
-               <td><button onclick="updateBalance('${a.id}', ${i})">Update</button>
-                   <button class="secondary" onclick="deleteAccount('${a.id}', '${esc(a.name)}')">✕</button></td>
-             </tr>`;
-           }
+           const updatedCell =
+             `${(a.updated_at || "").slice(0, 10)}` +
+             (a.is_stale ? ` <span class="chip warn">stale ${a.stale_days}d</span>` : "");
+           const sourceChip = a.is_manual
+             ? `<span class="chip">manual</span>`
+             : `<span class="chip ok">Plaid</span>`;
            return `<tr>
-             <td>${esc(a.name || "—")} ••${a.mask || ""}</td>
-             <td>${esc(a.subtype || a.type)}</td>
-             <td><span class="chip ok">Plaid</span></td>
+             <td>${nameCell}</td>
+             <td>${typeCell}</td>
+             <td>${sourceChip}</td>
              <td class="num">${bal}</td>
-             <td class="num">${aprCell}</td>
-             <td class="muted">${(a.updated_at || "").slice(0, 10)}</td>
-             <td></td>
+             <td>${termsCell}</td>
+             <td class="muted">${updatedCell}</td>
+             <td><button class="secondary" title="Edit account" onclick="openAccountEdit('${a.id}')">✎ Edit</button></td>
            </tr>`;
          })
          .join("")}</tbody></table>`
@@ -250,28 +251,122 @@ function renderDebtPlan(plan) {
      ${plan.debts.some((d) => d.never_pays_off) ? `<p class="muted" style="font-size:12px">*payment doesn't cover the monthly interest — the balance won't go down. Increase the payment.</p>` : ""}`;
 }
 
-window.setTerms = async (id, i) => {
-  const aprRaw = $(`#apr-${i}`).value;
-  const payRaw = $(`#pay-${i}`).value;
-  const apr = aprRaw === "" ? null : parseFloat(aprRaw);
-  const pay = payRaw === "" ? null : parseFloat(payRaw);
-  if (apr != null && Number.isNaN(apr)) return;
-  if (pay != null && Number.isNaN(pay)) return;
-  await api(`/accounts/${id}/terms`, {
-    method: "PATCH",
-    body: JSON.stringify({ interest_rate: apr, monthly_payment: pay }),
-  });
-  loadAccounts();
+// One popup gathers every edit available for a row: custom name (any account),
+// balance (manual only), APR + monthly payment (credit/loan), financing link
+// (assets), and delete (manual only). Replaces the old per-cell inline controls.
+window.closeAccountModal = () => {
+  $("#modal-root").innerHTML = "";
 };
-window.updateBalance = async (id, i) => {
-  const v = parseFloat($(`#bal-${i}`).value);
-  if (Number.isNaN(v)) return;
-  await api(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify({ current_balance: v }) });
-  loadAccounts();
+window.openAccountEdit = (id) => {
+  const a = accountsById[id];
+  if (!a) return;
+  const liab = LIABILITY_TYPES.includes(a.type);
+  const isAsset = a.type === "asset";
+
+  const balanceField = a.is_manual
+    ? `<div class="field">
+         <label>Balance</label>
+         <input id="m-bal" type="number" step="0.01" value="${a.current_balance ?? 0}" />
+       </div>`
+    : `<div class="field">
+         <label>Balance</label>
+         <input value="${money(a.current_balance)}" disabled />
+         <div class="hint">Plaid-synced — updates automatically on sync.</div>
+       </div>`;
+
+  const termsField = liab
+    ? `<div class="field">
+         <label>APR &amp; monthly payment</label>
+         <div class="pair">
+           <div><input id="m-apr" type="number" step="0.01" min="0" placeholder="APR %" value="${a.interest_rate ?? ""}" /></div>
+           <div><input id="m-pay" type="number" step="1" min="0" placeholder="$ / month" value="${a.monthly_payment ?? ""}" /></div>
+         </div>
+         <div class="hint">Payment drives the payoff date &amp; true-interest math.</div>
+       </div>`
+    : "";
+
+  const loans = Object.values(accountsById).filter(
+    (x) => LIABILITY_TYPES.includes(x.type) && x.id !== id
+  );
+  const linkField = isAsset
+    ? `<div class="field">
+         <label>Financed by (loan)</label>
+         <select id="m-link">
+           <option value="">Not financed / no loan</option>
+           ${loans
+             .map(
+               (l) =>
+                 `<option value="${l.id}" ${l.id === a.linked_account_id ? "selected" : ""}>${esc(
+                   l.display_name || l.name
+                 )}${l.mask ? " ••" + l.mask : ""}</option>`
+             )
+             .join("")}
+         </select>
+         <div class="hint">Links this asset to its loan to show equity (value − owed).</div>
+       </div>`
+    : "";
+
+  const deleteBtn = a.is_manual
+    ? `<button class="danger" onclick="deleteAccountFromModal('${id}')">Delete</button>`
+    : "";
+
+  $("#modal-root").innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeAccountModal()">
+      <div class="modal">
+        <h3>Edit account</h3>
+        <div class="muted">${esc(a.name || "—")}${a.mask ? " ••" + a.mask : ""} · ${a.is_manual ? "manual" : "Plaid"}</div>
+        <div class="field">
+          <label>Display name</label>
+          <input id="m-name" type="text" value="${esc(a.custom_name || "")}" placeholder="${esc(a.name || "")}" />
+          <div class="hint">Leave blank to use the bank's name${a.name ? ` (“${esc(a.name)}”)` : ""}.</div>
+        </div>
+        ${balanceField}
+        ${termsField}
+        ${linkField}
+        <div class="actions">
+          ${deleteBtn}
+          <span class="spacer"></span>
+          <button class="secondary" onclick="closeAccountModal()">Cancel</button>
+          <button onclick="saveAccountEdit('${id}')">Save</button>
+        </div>
+      </div>
+    </div>`;
 };
-window.deleteAccount = async (id, name) => {
-  if (!confirm(`Delete manual account "${name}"?`)) return;
+window.deleteAccountFromModal = async (id) => {
+  const a = accountsById[id];
+  if (!confirm(`Delete manual account "${a ? a.display_name || a.name : id}"?`)) return;
   await api(`/accounts/${id}`, { method: "DELETE" });
+  closeAccountModal();
+  loadAccounts();
+};
+window.saveAccountEdit = async (id) => {
+  const a = accountsById[id];
+  if (!a) return;
+  const liab = LIABILITY_TYPES.includes(a.type);
+
+  // custom_name is always present in the body so "" clears it (reverts to bank name).
+  const body = { custom_name: $("#m-name").value };
+  if (a.is_manual) {
+    const bal = parseFloat($("#m-bal").value);
+    if (!Number.isNaN(bal)) body.current_balance = bal;
+    if (a.type === "asset") body.linked_account_id = $("#m-link").value || "";
+  }
+  await api(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+  // APR / payment live on a separate endpoint (allowed on Plaid debts too).
+  if (liab) {
+    const aprRaw = $("#m-apr").value;
+    const payRaw = $("#m-pay").value;
+    const apr = aprRaw === "" ? null : parseFloat(aprRaw);
+    const pay = payRaw === "" ? null : parseFloat(payRaw);
+    if ((apr === null || !Number.isNaN(apr)) && (pay === null || !Number.isNaN(pay))) {
+      await api(`/accounts/${id}/terms`, {
+        method: "PATCH",
+        body: JSON.stringify({ interest_rate: apr, monthly_payment: pay }),
+      });
+    }
+  }
+  closeAccountModal();
   loadAccounts();
 };
 $("#manual-account-form").addEventListener("submit", async (e) => {
@@ -377,7 +472,9 @@ let goalsById = {};
 let goalAccounts = []; // accounts available to bind a goal to
 
 function acctLabel(a) {
-  return `${a.name}${a.mask ? ` ••${a.mask}` : ""}`;
+  // Prefer the resolved display name (custom name override) wherever it's available.
+  const nm = a.display_name || a.name;
+  return `${nm}${a.mask ? ` ••${a.mask}` : ""}`;
 }
 // Checkboxes for binding accounts to a goal. `selectedIds` pre-checks bound ones.
 function accountChecklist(selectedIds) {
@@ -428,7 +525,7 @@ async function loadGoals() {
               : ` (pay-off — <span class="warn">add an APR</span> on these accounts for an interest-aware estimate)`
             : "";
           const tracking = g.accounts.length
-            ? `<div class="muted">Tracking: ${g.accounts.map((a) => esc(a.name)).join(", ")}${payoffMeta}</div>`
+            ? `<div class="muted">Tracking: ${g.accounts.map((a) => esc(a.display_name || a.name)).join(", ")}${payoffMeta}</div>`
             : "";
           const interestNote =
             isPayoff && !g.complete && g.interest_to_payoff != null

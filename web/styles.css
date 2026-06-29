@@ -103,6 +103,27 @@ input, select {
 .chip.warn { color: var(--amber); }
 .warn { color: var(--amber); }
 
+/* Modal popup (e.g. the per-account "Edit account" dialog). */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 22px 24px; width: 420px; max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px); overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal h3 { margin: 0 0 4px; }
+.modal .field { margin-top: 16px; }
+.modal .field label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 5px; }
+.modal .field input, .modal .field select { width: 100%; box-sizing: border-box; }
+.modal .field .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
+.modal .pair { display: flex; gap: 10px; }
+.modal .pair > div { flex: 1; }
+.modal .actions { display: flex; gap: 10px; margin-top: 22px; align-items: center; }
+.modal .actions .spacer { flex: 1; }
+
 /* Server-rendered chart images on the Charts tab. */
 .chart-img { max-width: 100%; height: auto; display: block; border-radius: 6px; }
 
