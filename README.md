@@ -11,12 +11,43 @@ sync) and your local **Claude Code CLI** (the AI, using your Claude subscription
 no API key, no per-token bill).
 
 ## Quick start
-1. Double-click **`start.bat`** (or the **"Household Budget"** desktop shortcut).
-   First run sets up the environment; then your browser opens to
-   http://127.0.0.1:8765.
-2. To explore instantly with no setup: **Setup → Load sample data**.
-3. **Run only one copy at a time** (two will make the Telegram bot misbehave). The
-   console window that opens is the app — minimize it, but don't close it.
+
+### Try it in 2 minutes (no accounts, no keys)
+You can explore the whole app on realistic fake data before connecting anything.
+
+**Prerequisites:** Windows + [Python](https://www.python.org/downloads/) — built and
+tested on **3.14**; recent 3.12/3.13 likely work too. Use the python.org installer so
+the `py` launcher is available, and tick *"Add python.exe to PATH"*. Nothing else is
+required for this step.
+
+1. **Get the code** — download the ZIP (green *Code* button → *Download ZIP*) and
+   unzip it, or clone:
+   ```
+   git clone https://github.com/Jakemiingl/household-budget-app.git
+   cd household-budget-app
+   ```
+2. **Launch** — double-click **`start.bat`**. The first run creates a virtual
+   environment and installs dependencies (a minute or two), then your browser
+   opens to http://127.0.0.1:8765. The console window that appears **is** the app —
+   minimize it, don't close it.
+3. **Load demo data** — go to the **Setup** tab → **Load sample data**. You now have
+   ~4 months of a fake household to click through (Dashboard, Budgets, Goals,
+   Recurring, Charts, etc.).
+
+No `.env` is needed for this — every setting has a sensible default.
+
+### Connect your own data
+When you're ready to use real accounts and the AI assistant:
+
+1. **Copy `.env.example` to `.env`** (it's git-ignored) and fill in what you want —
+   see [Setup details](#setup-details) below. You can enable features independently:
+   Plaid for banks, the Claude CLI for AI chat, Telegram for phone access.
+2. **Restart** `start.bat` to pick up the changes. Real banks connect from the
+   **Setup** tab (sandbox works immediately with `user_good` / `pass_good`).
+
+> **Run only one copy at a time.** Two instances fight over the Telegram bot (you'll
+> see it "work for one person but not the other"). If you restart during use, make
+> sure the previous console window is closed first.
 
 ## Features
 - **Accounts** — Plaid-synced accounts plus **manual accounts** for banks Plaid
