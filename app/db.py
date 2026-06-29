@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     id                TEXT PRIMARY KEY,  -- Plaid account_id
     item_id           TEXT REFERENCES plaid_items(item_id),
     member_id         INTEGER REFERENCES members(id),
-    name              TEXT,
+    name              TEXT,              -- the bank/Plaid-provided name (or what you typed for a manual account)
+    custom_name       TEXT,              -- user override shown instead of `name` (NULL = use `name`); survives Plaid sync
     official_name     TEXT,
     type              TEXT,              -- depository | credit | loan | investment | asset
     subtype           TEXT,
@@ -267,6 +268,10 @@ def init_db() -> None:
         # plan can amortize real principal paydown instead of assuming a flat balance.
         if "monthly_payment" not in acct_cols:
             conn.execute("ALTER TABLE accounts ADD COLUMN monthly_payment REAL")
+        # ...and accounts.custom_name (a user-chosen display name that overrides the
+        # bank/Plaid `name`; NULL = use `name`). Plaid sync never writes this column.
+        if "custom_name" not in acct_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN custom_name TEXT")
 
         # Seed a single shared household. (The member_id columns on accounts/
         # transactions are kept so per-person tracking can be added later

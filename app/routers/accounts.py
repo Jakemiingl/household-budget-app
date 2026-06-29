@@ -28,6 +28,9 @@ class ManualAccount(BaseModel):
 
 class AccountUpdate(BaseModel):
     name: str | None = None
+    # A user-chosen display name. Present (even "") = set/clear ("" or blank reverts
+    # to the bank name); omitted = leave as-is. Allowed on Plaid accounts too.
+    custom_name: str | None = None
     current_balance: float | None = None
     # Present (even as "") = change the loan link ("" clears it); omitted = leave as-is.
     linked_account_id: str | None = None
@@ -106,6 +109,28 @@ def create_manual(body: ManualAccount):
 @router.patch("/{account_id}")
 def update_account(account_id: str, body: AccountUpdate):
     with db_cursor() as conn:
+        # Renaming (custom_name) is allowed on ANY account, including Plaid-synced
+        # ones — it's purely a display label and sync never overwrites it. Balance,
+        # name, and loan-link edits stay manual-only (a Plaid balance is authoritative).
+        if "custom_name" in body.model_fields_set:
+            if conn.execute(
+                "SELECT 1 FROM accounts WHERE id=?", (account_id,)
+            ).fetchone() is None:
+                raise HTTPException(404, "Account not found")
+            # Blank/whitespace clears the override so the bank name shows again.
+            custom = (body.custom_name or "").strip() or None
+            conn.execute(
+                "UPDATE accounts SET custom_name=? WHERE id=?", (custom, account_id)
+            )
+
+        manual_edit = (
+            body.name is not None
+            or body.current_balance is not None
+            or "linked_account_id" in body.model_fields_set
+        )
+        if not manual_edit:
+            return {"ok": True}
+
         _require_manual(conn, account_id)
         if body.name is not None:
             conn.execute(

@@ -156,7 +156,14 @@ def sandbox_connect(body: ConnectBody):
 def sync_all():
     total = 0
     with db_cursor() as conn:
-        items = conn.execute("SELECT item_id FROM plaid_items").fetchall()
+        items = conn.execute(
+            "SELECT item_id, member_id FROM plaid_items"
+        ).fetchall()
         for it in items:
+            # Refresh balances first — otherwise current_balance stays frozen at
+            # connect time and everything reading live balances (net worth,
+            # account-bound goal progress) never moves. ON CONFLICT preserves
+            # interest_rate / linked_account_id / name.
+            _store_accounts(conn, it["item_id"], it["member_id"])
             total += _sync_item(conn, it["item_id"])
     return {"items": len(items), "transactions_added": total}

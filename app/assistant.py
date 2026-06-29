@@ -35,8 +35,8 @@ def build_context(conn, question: str) -> dict:
     debts = [
         dict(r)
         for r in conn.execute(
-            """SELECT name, type, subtype, current_balance, interest_rate,
-                      monthly_payment FROM accounts
+            """SELECT COALESCE(custom_name, name) AS name, type, subtype,
+                      current_balance, interest_rate, monthly_payment FROM accounts
                WHERE type IN ('credit','loan') ORDER BY current_balance DESC"""
         ).fetchall()
     ]

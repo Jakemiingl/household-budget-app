@@ -108,6 +108,10 @@ data/               budget.db, server.log, _*.json — all git-ignored
 - `plaid_items` — connected Plaid items (item_id, access_token, cursor).
 - `accounts` — id (Plaid account_id OR "man_<uuid>"), item_id (NULL = manual),
   type (depository/credit/loan/investment/**asset**), current_balance, etc.
+  **`custom_name`** = a user-chosen display label that overrides the bank/Plaid
+  `name` (NULL = use `name`); editable on ANY account incl. Plaid, and Plaid sync
+  never writes it. accounts_summary exposes a resolved `display_name`
+  (= custom_name or name), used everywhere account names are shown.
   **is_manual = (item_id IS NULL).** Net worth: type in (credit, loan) = liability;
   everything else (incl. **asset**) = asset. **`linked_account_id`** on an `asset`
   row points at the loan financing it, so accounts_summary can derive per-item equity
@@ -146,7 +150,14 @@ data/               budget.db, server.log, _*.json — all git-ignored
   optionally **linked to its financing loan** to show **equity** (value − owed).
   **Staleness reminder**: manual accounts/assets not updated in `STALE_AFTER_DAYS`
   (90) get a "stale Nd" chip + a banner on the Dashboard and Accounts tabs (manual
-  balances don't auto-update like Plaid's). **APR per credit/loan** (inline editable,
+  balances don't auto-update like Plaid's). **Per-account edit popup** — each row has
+  a single "✎ Edit" button opening a modal (web/index.html `#modal-root`) with every
+  edit for that account: **custom display name** (any account incl. Plaid; blank
+  reverts to the bank name; survives sync via the `custom_name` column — e.g. rename
+  a cryptic Plaid name like "credit Account ••XXXX" → "Capital One"), balance
+  (manual only), APR + monthly
+  payment (credit/loan), financing link (assets), and delete (manual only). The table
+  cells themselves are read-only summaries. **APR per credit/loan** (editable in the popup,
   Plaid rows too) + a **Debt payoff plan** panel (avalanche order, balance/APR/monthly
   interest per debt, total monthly+annual interest bleed, unrated debts flagged last).
   Added 2026-06-24.
@@ -235,6 +246,15 @@ data/               budget.db, server.log, _*.json — all git-ignored
 - LLM call runs via `asyncio.to_thread`. Started in main.py lifespan if token set.
 
 ## Gotchas / lessons learned
+- **`/api/plaid/sync` used to NOT refresh account balances** — `_sync_item` only
+  pulled transactions + advanced the cursor; `_store_accounts` (the only writer of
+  `current_balance`) ran only at initial connect. So balances froze at connect time
+  and anything reading live balances (net worth, account-bound goal progress) never
+  moved. Symptom: a bound goal's `current_balance` stayed pixel-identical to its
+  `start_balance` snapshot, so payoff/savings progress sat at $0 forever. Fixed:
+  `sync_all` now calls `_store_accounts` per item before syncing txns. The upsert's
+  ON CONFLICT only updates current/available balance + updated_at, so APR, links,
+  and custom names survive a sync.
 - `claude` CLI `--json-schema` flag silently outputs nothing in v2.1.x → DON'T use
   it; we instruct JSON in the prompt and parse. Model alias is `haiku` (not `haiku-4-5`).
 - `PLAID_ENV=production` + a Sandbox secret → `INVALID_API_KEYS`. Production needs

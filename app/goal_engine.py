@@ -65,8 +65,8 @@ def bound_state(conn: sqlite3.Connection, goal_id: int,
     progress = the current combined balance toward the user's target.
     """
     rows = conn.execute(
-        """SELECT a.id, a.name, a.type, a.current_balance, a.interest_rate,
-                  ga.start_balance
+        """SELECT a.id, COALESCE(a.custom_name, a.name) AS name, a.type,
+                  a.current_balance, a.interest_rate, ga.start_balance
            FROM goal_accounts ga JOIN accounts a ON ga.account_id = a.id
            WHERE ga.goal_id = ?""",
         (goal_id,),

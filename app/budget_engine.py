@@ -162,18 +162,25 @@ def net_worth(conn: sqlite3.Connection) -> dict:
 
 def accounts_summary(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
-        """SELECT a.id, a.name, a.type, a.subtype, a.mask, a.current_balance,
-                  a.available_balance, a.currency, a.updated_at, a.linked_account_id,
-                  a.interest_rate, a.monthly_payment,
+        """SELECT a.id, a.name, a.custom_name, a.type, a.subtype, a.mask,
+                  a.current_balance, a.available_balance, a.currency, a.updated_at,
+                  a.linked_account_id, a.interest_rate, a.monthly_payment,
                   (a.item_id IS NULL) AS is_manual, m.name AS owner
            FROM accounts a LEFT JOIN members m ON a.member_id = m.id
            ORDER BY a.type, a.name"""
     ).fetchall()
     by_id = {r["id"]: r for r in rows}
     today = date.today()
+
+    def _display(row) -> str:
+        # User's custom name wins; fall back to the bank/Plaid name.
+        return (row["custom_name"] or row["name"] or "").strip() or "—"
+
     out = []
     for r in rows:
         d = dict(r)
+        # Resolved name to show in the UI (custom_name override or original name).
+        d["display_name"] = _display(r)
         # Estimated interest this month on a liability = balance × APR/12.
         d["monthly_interest"] = None
         if d["type"] in ("credit", "loan") and d["interest_rate"]:
@@ -192,7 +199,7 @@ def accounts_summary(conn: sqlite3.Connection) -> list[dict]:
         d["linked_name"], d["equity"] = None, None
         linked = by_id.get(d["linked_account_id"]) if d["linked_account_id"] else None
         if d["type"] == "asset" and linked is not None:
-            d["linked_name"] = linked["name"]
+            d["linked_name"] = _display(linked)
             d["equity"] = round((d["current_balance"] or 0.0)
                                 - (linked["current_balance"] or 0.0), 2)
         out.append(d)
@@ -272,8 +279,8 @@ def debt_payoff_plan(conn: sqlite3.Connection) -> dict:
     TRUE interest (12-month + to-clear), instead of assuming a static balance.
     """
     rows = conn.execute(
-        """SELECT id, name, type, subtype, mask, current_balance, interest_rate,
-                  monthly_payment
+        """SELECT id, COALESCE(custom_name, name) AS name, type, subtype, mask,
+                  current_balance, interest_rate, monthly_payment
            FROM accounts WHERE type IN ('credit','loan')"""
     ).fetchall()
     today = date.today()
