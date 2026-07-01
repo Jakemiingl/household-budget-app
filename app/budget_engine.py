@@ -375,14 +375,90 @@ def monthly_summary(conn: sqlite3.Connection, month: str | None = None) -> dict:
     }
 
 
+def checking_cash_flow(conn: sqlite3.Connection, month: str | None = None) -> dict:
+    """Actual cash in vs out of your bank (depository) accounts for a month.
+
+    This is the truest "money in − money out" surplus: it counts what really moved
+    through checking/savings. It sidesteps the credit-card double-count automatically
+    — card PURCHASES never touch a bank account (they hit the card), only the card
+    PAYMENT does — so card spending is counted once, when you actually pay it. Plaid
+    sign: +amount = money out, −amount = money in, so net = −SUM(amount). Uses all
+    depository accounts so an internal checking→savings transfer nets to zero rather
+    than looking like spending.
+    """
+    month = month or _this_month()
+    row = conn.execute(
+        """SELECT COALESCE(-SUM(CASE WHEN t.amount<0 THEN t.amount END),0) AS cash_in,
+                  COALESCE( SUM(CASE WHEN t.amount>0 THEN t.amount END),0) AS cash_out
+           FROM transactions t JOIN accounts a ON t.account_id=a.id
+           WHERE a.type='depository' AND substr(t.date,1,7)=?""",
+        (month,),
+    ).fetchone()
+    cash_in = row["cash_in"] or 0.0
+    cash_out = row["cash_out"] or 0.0
+    return {
+        "cash_in": round(cash_in, 2),
+        "cash_out": round(cash_out, 2),
+        "net": round(cash_in - cash_out, 2),
+    }
+
+
+CC_PAYMENT_CATEGORY = "Credit Card Payment"
+
+
+def credit_card_summary(conn: sqlite3.Connection, month: str | None = None) -> dict:
+    """Money sent to Plaid credit cards this month vs. the planned target.
+
+    Card *purchases* are already counted as category expenses, so the *payment* is
+    a transfer (see CC_PAYMENT_CATEGORY, kind='transfer') — it must NOT be an
+    expense or it double-counts. But you still want to see and plan the paydown, so
+    we surface it here as a cash-flow figure. `actual` = the OUTFLOW only (money-out
+    legs, amount>0); the mirroring money-in leg on the card side is excluded so this
+    reads as "dollars we sent," not a netted zero. The planned target is stored like
+    any budget (a budgets row on the CC_PAYMENT_CATEGORY category).
+    """
+    month = month or _this_month()
+    cat = conn.execute(
+        "SELECT id FROM categories WHERE name=?", (CC_PAYMENT_CATEGORY,)
+    ).fetchone()
+    if cat is None:
+        return {"category_id": None, "target": None, "actual": 0.0,
+                "remaining": None, "pct": None, "over": False, "count": 0}
+    cid = cat["id"]
+    row = conn.execute(
+        """SELECT COALESCE(SUM(t.amount),0) AS actual, COUNT(*) AS n
+           FROM transactions t
+           WHERE t.category_id=? AND substr(t.date,1,7)=? AND t.amount>0""",
+        (cid, month),
+    ).fetchone()
+    actual = row["actual"] or 0.0
+    lim = conn.execute(
+        "SELECT monthly_limit FROM budgets WHERE category_id=?", (cid,)
+    ).fetchone()
+    target = lim["monthly_limit"] if lim else None
+    return {
+        "category_id": cid,
+        "target": round(target, 2) if target is not None else None,
+        "actual": round(actual, 2),
+        "remaining": round(target - actual, 2) if target is not None else None,
+        "pct": round(100 * actual / target, 1) if target else None,
+        "over": bool(target is not None and actual > target),
+        "count": row["n"],
+    }
+
+
 def budget_vs_actual(conn: sqlite3.Connection, month: str | None = None) -> list[dict]:
     month = month or _this_month()
+    # Only spending (expense) categories belong in the budget-vs-actual list.
+    # Transfer categories (e.g. Credit Card Payment) are tracked separately so they
+    # don't show as misleading near-zero rows here.
     rows = conn.execute(
         """SELECT c.id AS category_id, c.name AS category, b.monthly_limit AS limit_amt,
                   COALESCE((SELECT SUM(t.amount) FROM transactions t
                             WHERE t.category_id=c.id
                             AND substr(t.date,1,7)=?), 0) AS actual
            FROM budgets b JOIN categories c ON b.category_id=c.id
+           WHERE c.kind='expense'
            ORDER BY c.name""",
         (month,),
     ).fetchall()

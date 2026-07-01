@@ -115,6 +115,12 @@ input, select {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 .modal h3 { margin: 0 0 4px; }
+/* Clickable in-table value (e.g. a budget's Spent figure → transaction drill-down). */
+.link {
+  color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent);
+  cursor: pointer;
+}
+.link:hover { text-decoration: none; border-bottom-style: solid; }
 .modal .field { margin-top: 16px; }
 .modal .field label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 5px; }
 .modal .field input, .modal .field select { width: 100%; box-sizing: border-box; }

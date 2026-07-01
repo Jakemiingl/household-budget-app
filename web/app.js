@@ -406,18 +406,22 @@ $("#asset-form").addEventListener("submit", async (e) => {
 // ---------------------------------------------------------------- budgets
 let budgetRows = [];
 async function loadBudgets() {
-  const [{ budgets, surplus }, { categories }] = await Promise.all([
+  const [{ budgets, surplus, credit_card }, { categories }] = await Promise.all([
     api("/budgets"),
     api("/transactions/categories"),
   ]);
   budgetRows = budgets;
   const expenseCats = categories.filter((c) => c.kind === "expense");
 
-  $("#budgets-surplus").innerHTML = card(
-    "Surplus this month",
-    money(surplus),
-    signClass(surplus)
-  );
+  // Single "cash going out" figure = planned spending (sum of expense limits) +
+  // planned credit-card paydown (the CC-payment plan target). One number to track.
+  const totalBudget = budgets.reduce((s, b) => s + (b.limit || 0), 0);
+  const cc = credit_card || {};
+  const plannedOut = totalBudget + (cc.target || 0);
+  $("#budgets-surplus").innerHTML =
+    card("Surplus this month", money(surplus), signClass(surplus)) +
+    card("Planned cash out", money(plannedOut));
+  renderCcPayPlan(cc);
 
   const rows = budgets
     .map((b, i) => {
@@ -425,7 +429,7 @@ async function loadBudgets() {
       return `<tr>
         <td>${b.category}</td>
         <td class="num"><input id="blim-${i}" type="number" step="0.01" value="${b.limit}" style="width:110px" /></td>
-        <td class="num">${money(b.actual)}</td>
+        <td class="num"><a href="#" class="link" onclick="showBudgetTxns(${b.category_id});return false" title="Show the transactions in this total">${money(b.actual)}</a></td>
         <td style="width:200px"><div class="bar ${b.over ? "over" : ""}"><span style="width:${pct}%"></span></div></td>
         <td class="num ${b.remaining < 0 ? "neg" : ""}">${money(b.remaining)}</td>
         <td><button onclick="saveBudget(${i})">Save</button>
@@ -465,6 +469,116 @@ window.deleteBudget = async (i) => {
   if (!b || !confirm(`Remove the budget for "${b.category}"?`)) return;
   await api(`/budgets/${b.category_id}`, { method: "DELETE" });
   loadBudgets();
+};
+
+// Credit-card payment plan: money sent to Plaid cards this month vs a target you
+// set. It's a transfer (card purchases are already in the budgets), so it's shown
+// here as its own paydown figure rather than as spending.
+let ccPayCategoryId = null;
+function renderCcPayPlan(cc) {
+  ccPayCategoryId = cc.category_id;
+  if (!cc.category_id) {
+    // Category not present yet (server not restarted since the migration).
+    $("#budgets-ccpay").innerHTML = "";
+    return;
+  }
+  const actual = cc.actual || 0;
+  const target = cc.target;
+  const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
+  const bar = target
+    ? `<div class="bar ${cc.over ? "over" : ""}" style="max-width:320px;margin-top:6px">
+         <span style="width:${pct}%"></span></div>`
+    : "";
+  const status = target
+    ? `<b>${money(actual)}</b> of <b>${money(target)}</b> planned · ${
+        cc.over
+          ? `<span class="neg">${money(actual - target)} over</span>`
+          : `${money(target - actual)} left`
+      }`
+    : `<b>${money(actual)}</b> sent so far · no monthly plan set`;
+  $("#budgets-ccpay").innerHTML = `
+    <div class="panel" style="margin-bottom:14px">
+      <h2>Credit card payments</h2>
+      <p class="muted" style="margin-top:0">
+        Money sent to your Plaid credit cards this month. This is a transfer, not
+        spending — your card purchases are already counted in the budgets below — so
+        it tracks paydown without double-counting. Set what you plan to send monthly.</p>
+      <div>${status}</div>
+      ${bar}
+      <div class="form-row" style="margin-top:12px">
+        <input id="ccpay-target" type="number" step="0.01" placeholder="Planned $ / month"
+               value="${target != null ? target : ""}" style="width:180px" />
+        <button id="ccpay-save">Save plan</button>
+      </div>
+    </div>`;
+  $("#ccpay-save").addEventListener("click", saveCcPayTarget);
+}
+async function saveCcPayTarget() {
+  const raw = $("#ccpay-target").value.trim();
+  if (!ccPayCategoryId) return;
+  if (raw === "") {
+    // Blank clears the plan.
+    await api(`/budgets/${ccPayCategoryId}`, { method: "DELETE" });
+  } else {
+    const amt = parseFloat(raw);
+    if (!(amt >= 0)) return;
+    await api(`/budgets/${ccPayCategoryId}`, {
+      method: "PUT",
+      body: JSON.stringify({ monthly_limit: amt }),
+    });
+  }
+  loadBudgets();
+}
+
+// Drill-down: click a budget's Spent figure to see the exact transactions in it.
+// The listed amounts sum to the Spent total (money-in nets down, same as the total).
+window.closeBudgetModal = () => {
+  $("#modal-root").innerHTML = "";
+};
+window.showBudgetTxns = async (categoryId) => {
+  let data;
+  try {
+    data = await api(`/budgets/category-transactions?category_id=${categoryId}`);
+  } catch (e) {
+    alert("Couldn't load transactions: " + e.message);
+    return;
+  }
+  const rows = data.transactions.length
+    ? data.transactions
+        .map(
+          (t) => `<tr>
+            <td>${esc(t.date)}</td>
+            <td>${esc(t.name || t.merchant_name || "—")}${
+              t.pending ? ' <span class="muted">(pending)</span>' : ""
+            }<div class="muted" style="font-size:11px">${esc(t.account || "")}${
+              t.rule_pattern ? ` · rule “${esc(t.rule_pattern)}”` : ""
+            }</div></td>
+            <td class="num ${t.amount < 0 ? "pos" : ""}">${money(t.amount)}</td>
+          </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" class="muted">No transactions this month.</td></tr>`;
+
+  $("#modal-root").innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeBudgetModal()">
+      <div class="modal" style="width:640px">
+        <h3>${esc(data.category)} — ${esc(data.month)}</h3>
+        <div class="muted">${data.count} transaction${data.count === 1 ? "" : "s"} ·
+          Spent <b>${money(data.actual)}</b>${
+            data.transactions.some((t) => t.amount < 0)
+              ? ' <span class="muted">(money-in, shown in green, nets the total down)</span>'
+              : ""
+          }</div>
+        <div style="max-height:60vh;overflow:auto;margin-top:8px">
+          <table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        </div>
+        <div class="actions">
+          <span class="spacer"></span>
+          <button onclick="closeBudgetModal()">Close</button>
+        </div>
+      </div>
+    </div>`;
 };
 
 // ---------------------------------------------------------------- goals

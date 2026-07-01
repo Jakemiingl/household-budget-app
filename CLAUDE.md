@@ -56,6 +56,12 @@ app/
                    (+real_assets breakdown), accounts_summary (+equity & is_stale/stale_days),
                    monthly_summary, budget_vs_actual, cash_flow, category_averages,
                    average_monthly_surplus, recategorize_all, pfc_to_category_name(),
+                   credit_card_summary() (money sent to Plaid cards this month vs a
+                   planned target; OUTFLOW-only so it reads as "dollars sent"),
+                   checking_cash_flow() (cash in − out of depository accounts for a
+                   month; the Budgets-tab "Surplus" = this, NOT income−expenses —
+                   real money-in-minus-out, card purchases excluded since they never
+                   touch the bank, only the payment does),
                    debt_payoff_plan() (avalanche: liabilities ranked by APR desc,
                    monthly/annual interest, unrated last).
                    NOTE: category totals NET all txns by kind (a refund/money-in in an
@@ -85,7 +91,11 @@ app/
                     (incl. PFC hint), /mismatches (PFC kind-level), /categories;
                     POST /recategorize, /categories (create), {id}/ignore-mismatch;
                     PATCH {id}/category
-    budgets.py      GET "" (vs actual + this-month surplus), /summary, /cash-flow; PUT/DELETE {category_id}
+    budgets.py      GET "" (vs actual + this-month surplus + credit_card block),
+                    /category-transactions (drill-down: txns behind a category's
+                    Spent), /summary, /cash-flow; PUT/DELETE {category_id} (also sets/
+                    clears the CC-payment plan target — it's a budgets row on the
+                    'Credit Card Payment' category)
     goals.py        GET ""; POST "" / PUT {id} (accept account_ids to bind/snapshot); DELETE {id}
     rules.py        GET rules; POST "" (create, w/ direction); PUT {id} (edit, re-cat);
                     DELETE {id} (re-cat affected); POST {id}/mute-pfc; POST /suggest (AI)
@@ -123,6 +133,20 @@ data/               budget.db, server.log, _*.json — all git-ignored
   − = money in**), category_id, category_rule_id (rule that set it), plaid_category
   (legacy, often NULL), **plaid_pfc** (Plaid personal_finance_category 'detailed'),
   **pfc_ignored** (dismissed a PFC mismatch), pending.
+  **Credit-card payment accounting (accrual):** Plaid-card PURCHASES are counted as
+  category expenses when they post. A card PAYMENT is therefore NOT spending — it
+  settles a bill already counted — so payments route to the **`Credit Card Payment`**
+  category (kind=`transfer`, excluded from income/expense) to avoid double-counting.
+  Both legs go there (checking-side money-out + the card-side money-in mirror); rules
+  cover them via the card issuer's name (checking-side) + card-side payment patterns
+  (e.g. autopay / minimum-payment / mobile-app payment descriptions).
+  `credit_card_summary()` reports the OUTFLOW leg only (amount>0) as "sent this month"
+  and reads its planned target from a budgets row on that category. Interest & fees
+  (e.g. INTEREST CHARGE, payment fees) stay in **Debt Payment**; so do payments to
+  installment LOANS and to MANUAL/un-synced credit cards — those have no purchase
+  feed, so their payment is the only spending signal and must remain an expense.
+  Payoff-goal progress is independent of all this: it derives from live account
+  balances (start−current), not categories.
 - `categories` (name, kind: income/expense/transfer) + `category_rules`
   (pattern, category_id, priority [user=50, seeded=100], **direction**: any/in/out,
   **pfc_mute**: suppress this rule's PFC mismatch flags). Add categories at runtime
@@ -162,8 +186,17 @@ data/               budget.db, server.log, _*.json — all git-ignored
   interest per debt, total monthly+annual interest bleed, unrated debts flagged last).
   Added 2026-06-24.
 - **Budgets** — monthly limit per category; budget-vs-actual with bars; **this-month
-  surplus** card (income − expenses) top-left; **inline edit** the limit + delete per
-  row. "✨ Build my budget with AI" → assistant proposes budgets you apply in one click.
+  surplus** card = actual **cash in − cash out of your bank accounts**
+  (`checking_cash_flow`, NOT income−expenses — sidesteps the CC double-count since card
+  purchases hit the card not the bank); **Planned cash out** card (sum of set
+  expense limits + the CC-payment plan target — one "cash going out" figure);
+  **inline edit** the limit + delete per row. Click a row's **Spent** figure
+  to drill into the exact transactions in that total (money-in shown green, nets the
+  total down — reconciles to Spent). **Credit card payments** panel: money sent to
+  Plaid cards this month + a settable monthly **plan target** (progress bar); it's a
+  transfer, not spending, so it doesn't double-count purchases (see accounting note
+  in Data model). "✨ Build my budget with AI" → assistant proposes budgets you apply
+  in one click.
 - **Goals** — priority-waterfall projections from average monthly surplus; **purchase
   simulation** via the assistant ("how much does $X delay each goal?"); **inline edit**
   (name/target/saved/date/priority) + delete per goal.

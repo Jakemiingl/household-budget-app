@@ -164,6 +164,11 @@ DEFAULT_CATEGORIES = [
     ("Subscriptions", "expense"),
     ("Insurance", "expense"),
     ("Debt Payment", "expense"),
+    # Credit-card payments to Plaid-synced cards. kind='transfer' so it's excluded
+    # from income/expense totals (the card's PURCHASES are already counted as
+    # expenses; counting the payment too would double-count). Tracked separately as
+    # a monthly cash-flow figure with its own planned target. See budget_engine.
+    ("Credit Card Payment", "transfer"),
     ("Uncategorized", "expense"),
 ]
 
